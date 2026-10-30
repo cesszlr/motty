@@ -2,20 +2,24 @@ package workbench
 
 import (
 	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/vivaui/viva/ui"
 	"motty/internal/sshconn"
 )
 
 type mockPingerConn struct {
 	fakeConn
-	rtt time.Duration
-	err error
+	rtt   time.Duration
+	err   error
+	calls int32
 }
 
 func (m *mockPingerConn) Ping(ctx context.Context) (time.Duration, error) {
+	atomic.AddInt32(&m.calls, 1)
 	return m.rtt, m.err
 }
 
@@ -164,5 +168,76 @@ func TestMaybeProbeLatency(t *testing.T) {
 	}
 	if got := atomic.LoadInt64(&session.rttMs); got != 42 {
 		t.Fatalf("expected rttMs to be 42, got %d", got)
+	}
+}
+
+func TestLatencyProbeRateLimitsAndStopsAfterAFailure(t *testing.T) {
+	state := newTestState(t, testOptions(t))
+	state.terminalShowLatency = true
+	conn := &mockPingerConn{rtt: 12 * time.Millisecond}
+	session := &Session{ID: 1, conn: conn, phase: sshconn.PhaseConnected}
+
+	state.maybeProbeLatency(session, nil)
+	waitForLatency(t, session, 1)
+	// The next paint is inside the interval: no second request.
+	state.maybeProbeLatency(session, nil)
+	if got := atomic.LoadInt32(&conn.calls); got != 1 {
+		t.Fatalf("probes = %d, want 1", got)
+	}
+
+	failing := &mockPingerConn{err: errors.New("no reply")}
+	fallingSession := &Session{ID: 2, conn: failing, phase: sshconn.PhaseConnected}
+	state.maybeProbeLatency(fallingSession, nil)
+	waitForLatencyBroken(t, fallingSession)
+	// A broken connection is not probed again until it reconnects.
+	session = fallingSession
+	session.resetLatency()
+	state.maybeProbeLatency(session, nil)
+	waitForLatencyBroken(t, session)
+	if got := atomic.LoadInt32(&failing.calls); got != 2 {
+		t.Fatalf("probes after reconnect = %d, want 2", got)
+	}
+}
+
+func waitForLatency(t *testing.T, session *Session, want int32) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if atomic.LoadInt32(&session.rttAvailable) == want {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("rttAvailable = %d, want %d", atomic.LoadInt32(&session.rttAvailable), want)
+}
+
+func waitForLatencyBroken(t *testing.T, session *Session) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if atomic.LoadInt32(&session.rttBroken) == 1 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("latency probe did not stop after a failure")
+}
+
+func TestLatencyToggleThroughSettings(t *testing.T) {
+	state := newTestState(t, testOptions(t))
+	state.Click(hitSettings)
+	state.selectSettingsCategory(settingsTerminal)
+	var canvas ui.Canvas
+	state.Paint(&canvas, ui.Size{Width: 1400, Height: 1600})
+	var texts []string
+	for _, text := range canvas.Texts() {
+		texts = append(texts, text.Value)
+	}
+	if !contains(texts, state.messages.Tools.LatencyRow) || !hasHit(&canvas, hitSettingsLatencyToggle) {
+		t.Fatalf("setting is not shown: %v", texts)
+	}
+	state.Click(hitSettingsLatencyToggle)
+	if !state.terminalShowLatency {
+		t.Fatal("the settings toggle did not turn the display on")
 	}
 }

@@ -13,7 +13,10 @@ import (
 
 const latencyProbeInterval = 3 * time.Second
 
-// maybeProbeLatency initiates an asynchronous ping to measure RTT when latency display is enabled.
+// maybeProbeLatency starts one asynchronous ping when the latency display is
+// enabled and the previous sample is old enough. The ping runs on its own
+// goroutine and publishes through the session's atomics, so paint never waits
+// for the network.
 func (state *State) maybeProbeLatency(session *Session, canvas *ui.Canvas) {
 	if !state.terminalShowLatency || session == nil || session.isLocal() || session.phase != sshconn.PhaseConnected {
 		return
@@ -22,13 +25,17 @@ func (state *State) maybeProbeLatency(session *Session, canvas *ui.Canvas) {
 	if !ok {
 		return
 	}
+	// A failed request cannot be canceled: its goroutine stays inside the SSH
+	// client until the reply or the connection close. Stop probing this
+	// connection instead of stacking another request every few seconds; the
+	// next reconnect clears the flags.
+	if atomic.LoadInt32(&session.rttBroken) == 1 {
+		return
+	}
 	now := time.Now()
-	if atomic.LoadInt32(&session.rttAvailable) == 1 && now.Sub(session.rttLastPing) < latencyProbeInterval {
-		if canvas != nil {
-			remaining := latencyProbeInterval - now.Sub(session.rttLastPing)
-			if remaining > 0 {
-				canvas.RequestFrameIn(remaining)
-			}
+	if elapsed := now.Sub(session.rttLastPing); elapsed < latencyProbeInterval {
+		if canvas != nil && atomic.LoadInt32(&session.rttAvailable) == 1 {
+			canvas.RequestFrameIn(latencyProbeInterval - elapsed)
 		}
 		return
 	}
@@ -36,22 +43,45 @@ func (state *State) maybeProbeLatency(session *Session, canvas *ui.Canvas) {
 		return
 	}
 	session.rttLastPing = now
+	generation := atomic.LoadUint32(&session.rttGeneration)
 	notify := state.notifyFor(session)
 	go func() {
-		defer atomic.StoreInt32(&session.rttMeasuring, 0)
+		defer func() {
+			if atomic.LoadUint32(&session.rttGeneration) == generation {
+				atomic.StoreInt32(&session.rttMeasuring, 0)
+			}
+		}()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		rtt, err := pinger.Ping(ctx)
-		if err == nil {
-			ms := rtt.Milliseconds()
-			if ms < 1 && rtt > 0 {
-				ms = 1
-			}
-			atomic.StoreInt64(&session.rttMs, ms)
-			atomic.StoreInt32(&session.rttAvailable, 1)
-			notify()
+		if atomic.LoadUint32(&session.rttGeneration) != generation {
+			return
 		}
+		if err != nil {
+			atomic.StoreInt32(&session.rttBroken, 1)
+			atomic.StoreInt32(&session.rttAvailable, 0)
+			notify()
+			return
+		}
+		ms := rtt.Milliseconds()
+		if ms < 1 && rtt > 0 {
+			ms = 1
+		}
+		atomic.StoreInt64(&session.rttMs, ms)
+		atomic.StoreInt32(&session.rttAvailable, 1)
+		notify()
 	}()
+}
+
+// resetLatency discards the samples of the previous connection. A probe still
+// in flight sees the new generation and drops its result.
+func (session *Session) resetLatency() {
+	atomic.AddUint32(&session.rttGeneration, 1)
+	atomic.StoreInt32(&session.rttMeasuring, 0)
+	atomic.StoreInt32(&session.rttBroken, 0)
+	atomic.StoreInt32(&session.rttAvailable, 0)
+	atomic.StoreInt64(&session.rttMs, 0)
+	session.rttLastPing = time.Time{}
 }
 
 // latencyInfo returns the latency text and status color (<100ms green, <200ms yellow, >=200ms red).

@@ -128,7 +128,13 @@ func (conn *Conn) closedError(waitErr error) error {
 	return fmt.Errorf("%w: %w", ErrDisconnected, waitErr)
 }
 
-// Ping measures the round-trip time (RTT) to the SSH server using keepalive@openssh.com.
+// Ping measures the round-trip time (RTT) to the SSH server using
+// keepalive@openssh.com.
+//
+// A context without a deadline gets the default two-second one. The request
+// itself cannot be canceled: after a timeout the client keeps waiting for the
+// reply before it can send another global request, so callers must not start a
+// new probe while the previous one is unresolved.
 func (conn *Conn) Ping(ctx context.Context) (time.Duration, error) {
 	conn.mu.Lock()
 	client := conn.client
@@ -138,8 +144,11 @@ func (conn *Conn) Ping(ctx context.Context) (time.Duration, error) {
 		return 0, errors.New("sshconn: not connected")
 	}
 	if ctx == nil {
+		ctx = context.Background()
+	}
+	if _, ok := ctx.Deadline(); !ok {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+		ctx, cancel = context.WithTimeout(ctx, 2*time.Second)
 		defer cancel()
 	}
 	type pingResult struct {
