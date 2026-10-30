@@ -1135,6 +1135,31 @@ func TestSFTPListScrollsDownWithPositiveDeltaOnlyOverThePanel(t *testing.T) {
 	if want := len(view.rows) - view.visibleRows; view.first != want {
 		t.Fatalf("scrolling far down left the first row at %d, want the last page at %d", view.first, want)
 	}
+
+	// Scrolling far down and painting anchors the list at the bottom. Further
+	// downward wheels must not repaint or jitter the offset.
+	state.Paint(&canvas, size)
+	bottomOffset := view.scrollOffset
+	bottomFirst := view.first
+	for i := 0; i < 10; i++ {
+		res := state.Scroll(ui.ScrollEvent{X: panel.X + panel.Width/2, Y: panel.Y + 100, DeltaY: sftpRowHeight, Viewport: size})
+		if res.Repaint {
+			t.Fatalf("scroll at bottom requested repaint on iteration %d", i)
+		}
+		state.Paint(&canvas, size)
+		if view.scrollOffset != bottomOffset || view.first != bottomFirst {
+			t.Fatalf("scroll at bottom jittered: offset %f -> %f, first %d -> %d", bottomOffset, view.scrollOffset, bottomFirst, view.first)
+		}
+	}
+
+	// Scrolling upward from the bottom must move and repaint smoothly.
+	upRes := state.Scroll(ui.ScrollEvent{X: panel.X + panel.Width/2, Y: panel.Y + 100, DeltaY: -sftpRowHeight, Viewport: size})
+	if !upRes.Repaint {
+		t.Fatal("scrolling upward from bottom did not request repaint")
+	}
+	if view.first >= bottomFirst && view.scrollOffset >= bottomOffset {
+		t.Fatalf("scrolling upward from bottom did not decrease position: offset=%f first=%d", view.scrollOffset, view.first)
+	}
 }
 
 // A files panel that was open when the app last quit comes back with its list:

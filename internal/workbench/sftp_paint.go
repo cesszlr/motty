@@ -291,7 +291,9 @@ func (state *State) paintSFTPList(canvas *ui.Canvas, size ui.Size, list ui.Rect,
 	state.paintSFTPColumnHeader(canvas, ui.Rect{X: list.X, Y: list.Y, Width: list.Width, Height: headerHeight}, folder, sizeWidth, modifiedWidth, scrolls)
 
 	if !view.scrollDrag {
-		folder.scrollOffset = float32(folder.first) * sftpRowHeight
+		if folder.scroll.MaxOffsetY <= 0 || folder.scrollOffset > folder.scroll.MaxOffsetY || int(folder.scrollOffset/sftpRowHeight) != folder.first {
+			folder.scrollOffset = float32(folder.first) * sftpRowHeight
+		}
 	}
 	area := components.BeginScrollArea(canvas, state.Theme(), body, ui.Size{Width: body.Width, Height: float32(len(folder.rows)) * sftpRowHeight}).
 		Offset(0, folder.scrollOffset).

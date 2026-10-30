@@ -1543,7 +1543,29 @@ func (state *State) scrollSFTP(view *sftpView, event ui.ScrollEvent) ui.EventRes
 		view.editLayout.ScrollBy(event.DeltaY)
 		return ui.EventResult{Handled: true, Repaint: true}
 	}
-	return scrollFolder(view.active(), event)
+	folder := view.active()
+	if folder.visibleRows <= 0 || len(folder.rows) <= folder.visibleRows {
+		return ui.EventResult{Handled: true}
+	}
+	// At the edges, continuing to scroll outward is a no-op that must not repaint
+	// or jitter the layout.
+	maxOffset := folder.scroll.MaxOffsetY
+	if maxOffset > 0 && folder.scrollOffset >= maxOffset && event.DeltaY > 0 {
+		folder.wheel = 0
+		return ui.EventResult{Handled: true, Repaint: false}
+	}
+	if folder.scrollOffset <= 0 && folder.first <= 0 && event.DeltaY < 0 {
+		folder.wheel = 0
+		return ui.EventResult{Handled: true, Repaint: false}
+	}
+	result := scrollFolder(folder, event)
+	if result.Repaint {
+		folder.scrollOffset = float32(folder.first) * sftpRowHeight
+		if maxOffset > 0 && folder.scrollOffset > maxOffset {
+			folder.scrollOffset = maxOffset
+		}
+	}
+	return result
 }
 
 // fitSFTP keeps every list's first row inside its rows after the layout moved.
