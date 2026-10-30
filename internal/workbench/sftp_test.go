@@ -1141,6 +1141,11 @@ func TestSFTPListScrollsDownWithPositiveDeltaOnlyOverThePanel(t *testing.T) {
 	state.Paint(&canvas, size)
 	bottomOffset := view.scrollOffset
 	bottomFirst := view.first
+	if bottomOffset == float32(bottomFirst)*sftpRowHeight {
+		// The jitter lives in the remainder between the pixel offset and the row
+		// grid; a row-aligned fixture could not fail, so it must not pass silently.
+		t.Fatalf("the fixture's bottom offset %f is row aligned", bottomOffset)
+	}
 	for i := 0; i < 10; i++ {
 		res := state.Scroll(ui.ScrollEvent{X: panel.X + panel.Width/2, Y: panel.Y + 100, DeltaY: sftpRowHeight, Viewport: size})
 		if res.Repaint {
@@ -1159,6 +1164,52 @@ func TestSFTPListScrollsDownWithPositiveDeltaOnlyOverThePanel(t *testing.T) {
 	}
 	if view.first >= bottomFirst && view.scrollOffset >= bottomOffset {
 		t.Fatalf("scrolling upward from bottom did not decrease position: offset=%f first=%d", view.scrollOffset, view.first)
+	}
+}
+
+// A drag released inside a row keeps the offset it left, and scrolling up from
+// there returns the list to its top instead of stalling on whole rows.
+func TestSFTPDragReleaseKeepsASubRowOffsetAndWheelUpReturnsToTheTop(t *testing.T) {
+	state, session, _, _ := openTestSFTP(t)
+	view := session.files
+	entries := make([]sftpclient.Entry, 100)
+	for index := range entries {
+		entries[index] = sftpclient.Entry{Name: fmt.Sprintf("file-%03d.txt", index), Mode: 0o644}
+	}
+	view.rows = prepareSFTPRows(view.rows, entries)
+	view.first = 0
+	size := ui.Size{Width: 1400, Height: 900}
+	var canvas ui.Canvas
+	state.Paint(&canvas, size)
+	panel := state.contextRect
+	if panel.Width == 0 {
+		t.Fatal("the paint reported no files panel")
+	}
+	folder := view.active()
+
+	// As a scrollbar drag would leave it: released 17 pixels into the first row,
+	// past the half-row mark that used to round the row up and snap back.
+	view.scrollDrag = true
+	folder.scrollOffset = 17
+	if result, handled := state.sftpListPointer(ui.PointerEvent{Kind: ui.PointerUp, Button: ui.PointerButtonPrimary, Captured: true}); !handled || !result.Repaint {
+		t.Fatal("releasing the scrollbar drag was not handled")
+	}
+	if folder.first != 0 {
+		t.Fatalf("release 17 pixels into the first row put the first row at %d, want 0", folder.first)
+	}
+	state.Paint(&canvas, size)
+	if folder.scrollOffset != 17 {
+		t.Fatalf("release over a partial row snapped the offset to %f, want 17", folder.scrollOffset)
+	}
+
+	// Scrolling up from that offset must show the top, not stall on row 0.
+	up := state.Scroll(ui.ScrollEvent{X: panel.X + panel.Width/2, Y: panel.Y + 100, DeltaY: -sftpRowHeight, Viewport: size})
+	if !up.Repaint {
+		t.Fatal("scrolling up from a sub-row offset did not request repaint")
+	}
+	state.Paint(&canvas, size)
+	if folder.scrollOffset != 0 || folder.first != 0 {
+		t.Fatalf("scrolling up left the list at offset %f, first %d, want 0/0", folder.scrollOffset, folder.first)
 	}
 }
 

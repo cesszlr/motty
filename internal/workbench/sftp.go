@@ -1554,6 +1554,13 @@ func (state *State) scrollSFTP(view *sftpView, event ui.ScrollEvent) ui.EventRes
 		folder.wheel = 0
 		return ui.EventResult{Handled: true, Repaint: false}
 	}
+	if folder.first <= 0 && folder.scrollOffset > 0 && event.DeltaY < 0 {
+		// A drag released inside the first row leaves a sub-row offset there;
+		// the wheel moves whole rows, so scrolling up would otherwise stall.
+		folder.wheel = 0
+		folder.scrollOffset = 0
+		return ui.EventResult{Handled: true, Repaint: true}
+	}
 	if folder.scrollOffset <= 0 && folder.first <= 0 && event.DeltaY < 0 {
 		folder.wheel = 0
 		return ui.EventResult{Handled: true, Repaint: false}
