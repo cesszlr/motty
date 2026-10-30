@@ -111,6 +111,8 @@ type ToolsMessages struct {
 	BellDescription            string
 	TabTitleRow                string
 	TabTitleDescription        string
+	LatencyRow                 string
+	LatencyDescription         string
 
 	// The terminal's font.
 	FontChoose              string

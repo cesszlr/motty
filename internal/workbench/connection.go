@@ -76,6 +76,15 @@ type slowShellOpener interface{ opensShellSlowly() }
 
 func (realConn) opensShellSlowly() {}
 
+// pinger is a Connection that can measure its network round-trip time.
+type pinger interface {
+	Ping(context.Context) (time.Duration, error)
+}
+
+func (conn realConn) Ping(ctx context.Context) (time.Duration, error) {
+	return conn.Conn.Ping(ctx)
+}
+
 // Share opens another tab on this connection's authenticated client.
 func (conn realConn) Share(notify func()) (Connection, error) {
 	child, err := conn.Conn.Share(notify)

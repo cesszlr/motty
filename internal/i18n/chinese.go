@@ -1194,6 +1194,8 @@ var chineseTools = ToolsMessages{
 	BellDescription:            "终端里的程序输出响铃字符（如 printf '\\a'、tput bel）时，在本机播放系统提示音，可用来提醒远程命令已完成。",
 	TabTitleRow:                "标签页跟随终端标题",
 	TabTitleDescription:        "标签页显示程序设置的标题，例如 tmux 的会话与窗口名。手动重命名过的标签页保持原名。",
+	LatencyRow:                 "显示延迟",
+	LatencyDescription:         "在终端面板顶部栏显示连接的 RTT 往返延迟信息（小于100ms绿色，小于200ms黄色，大于等于200ms红色）。",
 
 	FontChoose:              "选择",
 	FontCurrentFmt:          "当前：%s。可以使用任何已安装的等宽字体。",

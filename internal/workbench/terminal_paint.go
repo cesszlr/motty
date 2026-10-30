@@ -39,6 +39,7 @@ const (
 // The page is a column: the window bar's room, the pane's bar, then the terminal
 // whose cells paintGrid draws.
 func (state *State) paintTerminalPage(canvas *ui.Canvas, size ui.Size, session *Session) {
+	state.maybeProbeLatency(session, canvas)
 	pal := state.pal
 	showStats := session.stats != nil && (session.ID != state.activeSessionID || !state.monitorShown(state.deck.ActiveWorkspace()))
 	barHeight := state.terminalInfoBarHeight(session.ID)
@@ -130,6 +131,7 @@ func (state *State) paintTerminalPage(canvas *ui.Canvas, size ui.Size, session *
 							f.Text(status).FontSize(metrics.FontSizeS).Weight(ui.WeightMedium).Color(pal.muted).LineHeight(22).
 								Width(canvas.TextWidthWeight(status, metrics.FontSizeS, ui.WeightMedium)+2).MarginSides(0, 4, 0, 0)
 						}
+						state.declareLatencyTag(f, canvas, session)
 						if showStats {
 							// The readout drops the metrics that do not fit (see
 							// paintRemoteStatsReadout): it gets the room, and keeps clear of the tools.
@@ -232,6 +234,7 @@ func (state *State) declareInactiveBar(f *flex.Frame, width float32, title, stat
 	f.Row().Fill().PadX(termPadX).Items(flex.Center).Children(func() {
 		f.Icon(lucideIcons[iconTerminal]).Size(14, 14).Color(pal.faint).MarginSides(0, 7, 0, 0)
 		f.Text(title).FontSize(barTitleSize).Weight(ui.WeightSemibold).Color(pal.muted).LineHeight(22).Ellipsis().Grow(1).MarginSides(0, gap, 0, 0)
+		state.declareLatencyTag(f, canvas, session)
 		if session.busy {
 			spinner = f.Slot().Size(14, 14).MarginSides(0, 9, 0, 0)
 		}

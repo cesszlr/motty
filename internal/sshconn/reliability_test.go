@@ -209,6 +209,30 @@ func TestDialTimeoutAppliesThroughProxyJump(t *testing.T) {
 	}
 }
 
+func TestPingNotConnected(t *testing.T) {
+	conn := &Conn{}
+	if _, err := conn.Ping(context.Background()); err == nil {
+		t.Fatal("expected error when pinging disconnected conn")
+	}
+}
+
+func TestPingConnected(t *testing.T) {
+	server := startServer(t, func(server *testServer) {
+		server.password = "secret"
+		server.request = func(_ *ssh.ServerConn, request *ssh.Request) {
+			_ = request.Reply(true, nil)
+		}
+	})
+	harness := connect(t, server)
+	rtt, err := harness.conn.Ping(context.Background())
+	if err != nil {
+		t.Fatalf("Ping failed: %v", err)
+	}
+	if rtt <= 0 {
+		t.Fatalf("expected positive rtt, got %v", rtt)
+	}
+}
+
 func BenchmarkKeepAliveDisabled(b *testing.B) {
 	conn := Conn{}
 	b.ReportAllocs()

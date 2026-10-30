@@ -1194,6 +1194,8 @@ var englishTools = ToolsMessages{
 	BellDescription:            "Play the system sound on this machine when a program in the terminal rings the bell (printf '\\a', tput bel), to tell you a remote command is done.",
 	TabTitleRow:                "Tab title follows terminal",
 	TabTitleDescription:        "Shows the title a program sets, such as tmux's session and window, on the tab. Tabs you renamed keep their name.",
+	LatencyRow:                 "Show latency",
+	LatencyDescription:         "Show connection RTT latency in the terminal title bar (<100ms green, <200ms yellow, >=200ms red).",
 
 	FontChoose:              "Choose",
 	FontCurrentFmt:          "Now: %s. Any installed fixed-pitch font can be used.",

@@ -127,3 +127,35 @@ func (conn *Conn) closedError(waitErr error) error {
 	}
 	return fmt.Errorf("%w: %w", ErrDisconnected, waitErr)
 }
+
+// Ping measures the round-trip time (RTT) to the SSH server using keepalive@openssh.com.
+func (conn *Conn) Ping(ctx context.Context) (time.Duration, error) {
+	conn.mu.Lock()
+	client := conn.client
+	phase := conn.status.Phase
+	conn.mu.Unlock()
+	if client == nil || phase != PhaseConnected {
+		return 0, errors.New("sshconn: not connected")
+	}
+	if ctx == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+	}
+	type pingResult struct {
+		rtt time.Duration
+		err error
+	}
+	ch := make(chan pingResult, 1)
+	start := time.Now()
+	go func() {
+		_, _, err := client.SendRequest(keepAliveRequest, true, nil)
+		ch <- pingResult{rtt: time.Since(start), err: err}
+	}()
+	select {
+	case res := <-ch:
+		return res.rtt, res.err
+	case <-ctx.Done():
+		return 0, ctx.Err()
+	}
+}

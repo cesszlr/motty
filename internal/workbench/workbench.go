@@ -219,6 +219,7 @@ var (
 	hitSettingsCopyOnSelect     = tree.ID(settingsHits, "settings-copy-on-select")
 	hitSettingsRightClickPaste  = tree.ID(settingsHits, "settings-right-click-paste")
 	hitSettingsTabTitle         = tree.ID(settingsHits, "settings-tab-title")
+	hitSettingsLatencyToggle    = tree.ID(settingsHits, "settings-latency")
 	hitSettingsLinkPlainClick   = tree.ID(settingsHits, "settings-link-plain-click")
 	hitSettingsClipboardAsk     = tree.ID(settingsHits, "settings-clipboard-ask")
 	hitSettingsClipboardAllow   = tree.ID(settingsHits, "settings-clipboard-allow")
@@ -579,6 +580,8 @@ type State struct {
 	// terminalTabTitle lets a tab show the title its terminal reports instead
 	// of the host's name (see tabLabel).
 	terminalTabTitle bool
+	// terminalShowLatency displays connection RTT latency in the terminal panel.
+	terminalShowLatency bool
 	// terminalBellOff silences the terminal bell, and terminalLinkPlainClick
 	// opens a link on a click without the modifier key (see terminalLinkOpens).
 	terminalBellOff, terminalLinkPlainClick bool

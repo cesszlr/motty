@@ -140,6 +140,14 @@ type Session struct {
 	relay *notifyRelay
 	stats *remoteStatsView
 
+	// rttMs holds the latest measured round-trip time in milliseconds,
+	// rttAvailable is 1 when rttMs is valid, rttMeasuring is 1 while a ping is in flight,
+	// and rttLastPing records the last probe.
+	rttMs        int64
+	rttAvailable int32
+	rttMeasuring int32
+	rttLastPing  time.Time
+
 	// The connection page. stage is the furthest step the connection reached
 	// (see stageConnect...), since and finished bound the elapsed time (finished
 	// stays zero while the connection is still being made), and showLog swaps
