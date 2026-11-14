@@ -938,6 +938,7 @@ var ChineseMessages = Messages{
 	ProxyBatchUnboundCountFmt:        "已解除 %d 台设备的跳板路由",
 	ProxyHubDevicesCountFmt:          "%d 台设备",
 	ProxyHubToggleAll:                "切换全部启停",
+	ProxyHubUnbindAll:                "全部解绑",
 	HostMenuSetJump:                  "关联跳板机...",
 	ProxyHubSelectJumpPrompt:         "请选择跳板机中枢",
 	ProxyDeleteConfirmTitle:          "删除跳板路由",

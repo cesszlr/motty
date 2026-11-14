@@ -13,8 +13,11 @@ import (
 type proxySectionUI struct {
 	tableBox                                                                                    ui.Box
 	add, batchAdd, batchDelete, batchStart, batchStop, batchClear, empty                        ui.Box
+	hubToggle, hubUnbind                                                                        ui.Box
 	addWidth, batchAddWidth, batchDeleteWidth, batchStartWidth, batchStopWidth, batchClearWidth float32
+	hubToggleWidth, hubUnbindWidth                                                              float32
 	addIcon, batchAddIcon, batchDeleteIcon, batchStartIcon, batchStopIcon, batchClearIcon       uint8
+	hubToggleIcon, hubUnbindIcon                                                                uint8
 	condensed                                                                                   bool
 	// draw is the page hook that paints into these slots. It is kept so a paint
 	// does not build a closure for the hook.
@@ -35,10 +38,14 @@ func (state *State) declareProxiesWorkspace(c ui.C) {
 	)
 	bounds := state.catalogSectionBounds()
 	canAdd := state.canAddJumpRoute()
+	canBatch := state.canBatchAssociateProxies()
+	_, hubSelected := state.selectedBastionHub()
 
 	var (
 		addWidth, batchAddWidth, batchDeleteWidth, batchStartWidth, batchStopWidth, batchClearWidth float32
+		hubToggleWidth, hubUnbindWidth                                                              float32
 		addIcon, batchAddIcon, batchDeleteIcon, batchStartIcon, batchStopIcon, batchClearIcon       uint8
+		hubToggleIcon, hubUnbindIcon                                                                uint8
 		condensed                                                                                   bool
 	)
 
@@ -54,9 +61,18 @@ func (state *State) declareProxiesWorkspace(c ui.C) {
 		batchStartWidth, batchStartIcon = toolbarButtonLayout(canvas, messages.ProxyBatchStartAll, 0, iconPlay, condensed)
 		batchDeleteWidth, batchDeleteIcon = toolbarButtonLayout(canvas, batchDelLabel, iconTrash, iconTrash, condensed)
 	} else {
-		labeled := toolbarButtonWidth(canvas, messages.ProxyBatchAssociate, false) + gap +
+		var labeled float32
+		if hubSelected {
+			labeled = toolbarButtonWidth(canvas, messages.ProxyHubToggleAll, false) + gap +
+				toolbarButtonWidth(canvas, messages.ProxyHubUnbindAll, false) + gap
+		}
+		labeled += toolbarButtonWidth(canvas, messages.ProxyBatchAssociate, false) + gap +
 			toolbarButtonWidth(canvas, messages.ProxyAdd, true) + gap + titleLeast
 		condensed = labeled > bounds.Width-36
+		if hubSelected {
+			hubToggleWidth, hubToggleIcon = toolbarButtonLayout(canvas, messages.ProxyHubToggleAll, 0, iconStop, condensed)
+			hubUnbindWidth, hubUnbindIcon = toolbarButtonLayout(canvas, messages.ProxyHubUnbindAll, iconTrash, iconTrash, condensed)
+		}
 		batchAddWidth, batchAddIcon = toolbarButtonLayout(canvas, messages.ProxyBatchAssociate, iconPlus, iconPlus, condensed)
 		addWidth, addIcon = toolbarButtonLayout(canvas, messages.ProxyAdd, iconPlus, iconPlus, condensed)
 	}
@@ -65,8 +81,10 @@ func (state *State) declareProxiesWorkspace(c ui.C) {
 	*view = proxySectionUI{
 		addWidth: addWidth, batchAddWidth: batchAddWidth,
 		batchDeleteWidth: batchDeleteWidth, batchStartWidth: batchStartWidth, batchStopWidth: batchStopWidth, batchClearWidth: batchClearWidth,
+		hubToggleWidth: hubToggleWidth, hubUnbindWidth: hubUnbindWidth,
 		addIcon: addIcon, batchAddIcon: batchAddIcon,
 		batchDeleteIcon: batchDeleteIcon, batchStartIcon: batchStartIcon, batchStopIcon: batchStopIcon, batchClearIcon: batchClearIcon,
+		hubToggleIcon: hubToggleIcon, hubUnbindIcon: hubUnbindIcon,
 		condensed: condensed,
 	}
 	if draw == nil {
@@ -92,7 +110,11 @@ func (state *State) declareProxiesWorkspace(c ui.C) {
 				view.batchStart = state.declareButtonSized(c, hitProxyBatchStartAll, messages.ProxyBatchStartAll, batchStartIcon, false, false, true, toolbarFont, condensed).Size(batchStartWidth, toolbarHeight)
 				view.batchDelete = state.declareButtonSized(c, hitProxyBatchDelete, batchDelLabel, batchDeleteIcon, true, true, true, toolbarFont, condensed).Size(batchDeleteWidth, toolbarHeight)
 			} else {
-				view.batchAdd = state.declareButtonSized(c, hitProxyBatchAdd, messages.ProxyBatchAssociate, batchAddIcon, false, false, canAdd, toolbarFont, condensed).Size(batchAddWidth, toolbarHeight)
+				if hub, ok := state.selectedBastionHub(); ok && len(hub.Routes) > 0 {
+					view.hubToggle = state.declareButtonSized(c, hitProxyBatchToggleAll, messages.ProxyHubToggleAll, hubToggleIcon, false, false, true, toolbarFont, condensed).Size(hubToggleWidth, toolbarHeight)
+					view.hubUnbind = state.declareButtonSized(c, hitProxyBatchRemove, messages.ProxyHubUnbindAll, hubUnbindIcon, false, true, true, toolbarFont, condensed).Size(hubUnbindWidth, toolbarHeight)
+				}
+				view.batchAdd = state.declareButtonSized(c, hitProxyBatchAdd, messages.ProxyBatchAssociate, batchAddIcon, false, false, canBatch, toolbarFont, condensed).Size(batchAddWidth, toolbarHeight)
 				view.add = state.declareButtonSized(c, hitProxyAdd, messages.ProxyAdd, addIcon, true, false, canAdd, toolbarFont, condensed).Size(addWidth, toolbarHeight)
 			}
 		})
@@ -284,7 +306,7 @@ func (state *State) paintProxiesWorkspace(canvas *gfx.Canvas) {
 				Height: side,
 			}
 			isChecked := state.proxyChecked != nil && state.proxyChecked[route.ID]
-			components.BeginCheckbox(canvas, theme, hitProxyRowCheckList.At(int(route.ID)), cboxRect, isChecked).Paint()
+			components.BeginCheckbox(canvas, theme, hitProxyRowCheckList.At(int(route.ID)), cboxRect, isChecked).Label(route.label).Paint()
 		}
 
 		// 列 3: Switch 开关与状态文字
@@ -297,7 +319,7 @@ func (state *State) paintProxiesWorkspace(canvas *gfx.Canvas) {
 				Height: swHeight,
 			}
 			switchID := hitProxyRowSwitchList.At(int(route.ID))
-			components.BeginSwitch(canvas, theme, switchID, swRect, !route.Stopped).Small().Label(route.cells[2]).Paint()
+			components.BeginSwitch(canvas, theme, switchID, swRect, !route.Stopped).Small().Label(route.label).Paint()
 
 			statusText := state.messages.ProxyRunning
 			statusColor := pal.accent

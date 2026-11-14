@@ -938,6 +938,7 @@ var TraditionalMessages = Messages{
 	ProxyBatchUnboundCountFmt:        "已解除 %d 台設備的跳板路由",
 	ProxyHubDevicesCountFmt:          "%d 台設備",
 	ProxyHubToggleAll:                "切換全部啟停",
+	ProxyHubUnbindAll:                "全部解除關聯",
 	HostMenuSetJump:                  "關聯跳板機...",
 	ProxyHubSelectJumpPrompt:         "請選擇跳板機中樞",
 	ProxyDeleteConfirmTitle:          "刪除跳板路由",

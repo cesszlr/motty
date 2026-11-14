@@ -51,7 +51,7 @@ type proxyBatchCandidate struct {
 
 // openProxyBatchAssociate 打开以指定跳板机为中枢的批量关联设备弹窗
 func (state *State) openProxyBatchAssociate(jumpID uint32) {
-	if state.sshHostCount() < 2 {
+	if !state.canBatchAssociateProxies() {
 		state.showActionWarning(state.messages.ProxyBatchAssociateTitle, state.messages.ErrProxyHostsRequired)
 		return
 	}
@@ -84,7 +84,7 @@ func (state *State) openProxyBatchAssociate(jumpID uint32) {
 
 // openProxyBatchAssignForSelectedHosts 从主机列表多选打开批量分配跳板机弹窗
 func (state *State) openProxyBatchAssignForSelectedHosts(targetIDs []uint32) {
-	if len(targetIDs) == 0 || state.sshHostCount() < 2 {
+	if len(targetIDs) == 0 || !state.canBatchAssociateProxies() {
 		return
 	}
 
@@ -154,7 +154,7 @@ func (state *State) batchCandidates() []proxyBatchCandidate {
 
 	var candidates []proxyBatchCandidate
 	for _, host := range state.hosts {
-		if !host.isSSH() {
+		if !host.isRouteTarget() {
 			continue
 		}
 		if host.ID == jumpID {
@@ -238,7 +238,26 @@ func (state *State) submitProxyBatchAssociate() {
 
 	added, updated := state.batchAssociateProxies(dialog.jumpID, targetIDs, dialog.overwrite, dialog.viaShell, relayCmd)
 	if added+updated == 0 {
-		dialog.error = state.messages.ErrProxyCycle
+		// Name the reason the batch changed nothing instead of reporting a
+		// loop for a conflict the user can resolve another way.
+		cycle, taken := 0, 0
+		for _, id := range targetIDs {
+			if state.proxyWouldCycle(id, dialog.jumpID) {
+				cycle++
+				continue
+			}
+			if _, has := state.proxyRouteForTarget(id); has && !dialog.overwrite {
+				taken++
+			}
+		}
+		switch {
+		case cycle > 0:
+			dialog.error = state.messages.ErrProxyCycle
+		case taken > 0:
+			dialog.error = state.messages.ErrProxyTargetTaken
+		default:
+			dialog.error = state.messages.ErrProxyTargetRequired
+		}
 		return
 	}
 

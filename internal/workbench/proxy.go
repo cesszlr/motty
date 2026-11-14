@@ -289,6 +289,12 @@ func (state *State) canAddJumpRoute() bool {
 	return false
 }
 
+// canBatchAssociateProxies reports whether the batch dialog has a jump host and
+// at least one other host to associate with it.
+func (state *State) canBatchAssociateProxies() bool {
+	return state.sshHostCount() >= 1 && state.routeTargetCount() >= 2
+}
+
 func (state *State) openProxyDialog() {
 	if !state.canAddJumpRoute() {
 		state.showActionWarning(state.messages.ProxyDialogTitle, state.messages.ErrProxyHostsRequired)
@@ -649,6 +655,18 @@ func (state *State) clickProxies(id gfx.ID) {
 		state.batchToggleCheckedProxies(false)
 	case id == hitProxyBatchStopAll:
 		state.batchToggleCheckedProxies(true)
+	case id == hitProxyBatchToggleAll:
+		if hub, ok := state.selectedBastionHub(); ok {
+			state.toggleBastionHub(hub.JumpHost.ID)
+		}
+	case id == hitProxyBatchRemove:
+		if hub, ok := state.selectedBastionHub(); ok {
+			targets := make([]uint32, 0, len(hub.Targets))
+			for _, host := range hub.Targets {
+				targets = append(targets, host.ID)
+			}
+			state.batchRemoveProxiesForTargets(targets)
+		}
 	case id == hitProxyBatchClearSel:
 		state.clearProxyChecked()
 	case id.Scope() == hitProxyRowList:
@@ -956,7 +974,32 @@ func (state *State) refreshProxies() {
 	}
 	state.refreshProxyCount()
 	state.refreshBastionHubs()
+	resetHub := false
+	if state.selectedBastionJumpID != 0 {
+		found := false
+		for _, hub := range state.bastionHubList() {
+			if hub.JumpHost.ID == state.selectedBastionJumpID {
+				found = true
+				break
+			}
+		}
+		if !found {
+			// The selected hub lost its last route: show all routes again
+			// rather than leave the table filtered to nothing.
+			state.selectedBastionJumpID = 0
+			state.proxyTable.Select(-1)
+			resetHub = true
+		}
+	}
 	state.rebuildProxyFilter()
+	if resetHub {
+		state.selectedProxyID = 0
+		if state.visibleProxyCount() > 0 {
+			if first, ok := state.visibleProxyAt(0); ok {
+				state.selectedProxyID = first.ID
+			}
+		}
+	}
 }
 
 func (state *State) refreshProxyCount() {
@@ -1047,7 +1090,7 @@ func (state *State) batchAssociateProxies(jumpID uint32, targetIDs []uint32, ove
 			continue
 		}
 		targetHost, ok := state.hostByID(targetID)
-		if !ok || !targetHost.isSSH() {
+		if !ok || !targetHost.isRouteTarget() {
 			continue
 		}
 

@@ -938,6 +938,7 @@ var EnglishMessages = Messages{
 	ProxyBatchUnboundCountFmt:        "Unbound jump routes for %d devices",
 	ProxyHubDevicesCountFmt:          "%d devices",
 	ProxyHubToggleAll:                "Toggle All",
+	ProxyHubUnbindAll:                "Unbind All",
 	HostMenuSetJump:                  "Associate Jump Host...",
 	ProxyHubSelectJumpPrompt:         "Select Jump Host Hub",
 	ProxyDeleteConfirmTitle:          "Delete Jump Route",

@@ -1005,6 +1005,7 @@ type Messages struct {
 	ProxyBatchUnboundCountFmt        string
 	ProxyHubDevicesCountFmt          string
 	ProxyHubToggleAll                string
+	ProxyHubUnbindAll                string
 	HostMenuSetJump                  string
 	ProxyHubSelectJumpPrompt         string
 	ProxyDeleteConfirmTitle          string

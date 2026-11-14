@@ -992,3 +992,109 @@ func TestProxyBatchDialogListScrollsWithWheel(t *testing.T) {
 		t.Fatalf("expected wheel inside batch candidate listRect to trigger Repaint, got %+v", res)
 	}
 }
+
+func TestBastionHubToolbarTogglesAndUnbinds(t *testing.T) {
+	state := newTestState(t, testOptions(t))
+	state.activeSection = sectionProxies
+	jump, first, second := state.hosts[0], state.hosts[1], state.hosts[2]
+	state.batchAssociateProxies(jump.ID, []uint32{first.ID, second.ID}, false, false, "")
+	state.selectedBastionJumpID = jump.ID
+	state.rebuildProxyFilter()
+
+	state.Click(hitProxyBatchToggleAll)
+	if len(state.proxies) != 2 {
+		t.Fatalf("toggle kept %d routes, want 2", len(state.proxies))
+	}
+	for _, route := range state.proxies {
+		if !route.Stopped {
+			t.Fatalf("route %d still runs after the hub toggle", route.ID)
+		}
+	}
+
+	state.Click(hitProxyBatchToggleAll)
+	for _, route := range state.proxies {
+		if route.Stopped {
+			t.Fatalf("route %d still stopped after the second hub toggle", route.ID)
+		}
+	}
+
+	state.Click(hitProxyBatchRemove)
+	if len(state.proxies) != 0 {
+		t.Fatalf("hub unbind left %d routes", len(state.proxies))
+	}
+	if state.selectedBastionJumpID != 0 {
+		t.Fatalf("removed hub is still selected: %d", state.selectedBastionJumpID)
+	}
+}
+
+func TestProxyBatchAssociatesRemoteDesktopTargets(t *testing.T) {
+	state := newTestState(t, testOptions(t))
+	jump := state.hosts[0]
+	desk := Host{ID: 121, CatalogID: "desk", Label: "Desk", Address: "10.0.0.10", Protocol: protocolRDP}
+	desk.finish()
+	state.hosts = append(state.hosts, desk)
+
+	state.openProxyBatchAssociate(jump.ID)
+	if state.modal != modalProxyBatchAssociate {
+		t.Fatalf("batch dialog did not open for an RDP target")
+	}
+	found := false
+	for _, candidate := range state.batchCandidates() {
+		if candidate.Host.ID == desk.ID {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("the remote desktop host is not a batch candidate")
+	}
+	state.toggleBatchTarget(desk.ID)
+	state.Click(hitProxyBatchSubmit)
+	if state.modal != modalNone {
+		t.Fatalf("submit left the dialog open: %v", state.proxyBatch.error)
+	}
+	route, ok := state.proxyRouteForTarget(desk.ID)
+	if !ok || route.JumpID != jump.ID {
+		t.Fatalf("desktop route = %+v, want a jump through %d", route, jump.ID)
+	}
+}
+
+func TestBatchAssociateNeedsAJumpAndATarget(t *testing.T) {
+	state := newTestState(t, testOptions(t))
+	if !state.canBatchAssociateProxies() {
+		t.Fatal("three SSH hosts cannot open the batch dialog")
+	}
+	state.hosts = state.hosts[:1]
+	if state.canBatchAssociateProxies() {
+		t.Fatal("one host alone can open the batch dialog")
+	}
+	desk := Host{ID: 122, CatalogID: "desk", Label: "Desk", Address: "10.0.0.11", Protocol: protocolRDP}
+	desk.finish()
+	state.hosts = append(state.hosts, desk)
+	if !state.canBatchAssociateProxies() {
+		t.Fatal("one SSH jump and one desktop target cannot open the batch dialog")
+	}
+}
+
+func TestProxyBatchSubmitNamesTheReasonItChangedNothing(t *testing.T) {
+	state := newTestState(t, testOptions(t))
+	jump1, jump2, target := state.hosts[0], state.hosts[1], state.hosts[2]
+	state.batchAssociateProxies(jump2.ID, []uint32{target.ID}, false, false, "")
+
+	// The target already has a route and overwrite is off.
+	state.openProxyBatchAssociate(jump1.ID)
+	state.proxyBatch.overwrite = false
+	state.toggleBatchTarget(target.ID)
+	state.submitProxyBatchAssociate()
+	if state.proxyBatch.error != state.messages.ErrProxyTargetTaken {
+		t.Fatalf("existing route error = %q, want %q", state.proxyBatch.error, state.messages.ErrProxyTargetTaken)
+	}
+
+	// Making the target a jump for its own jump host closes a loop.
+	state.proxyBatch.error = ""
+	state.proxyBatch.jumpID = target.ID
+	state.proxyBatch.selected = map[uint32]bool{jump2.ID: true}
+	state.submitProxyBatchAssociate()
+	if state.proxyBatch.error != state.messages.ErrProxyCycle {
+		t.Fatalf("cycle error = %q, want %q", state.proxyBatch.error, state.messages.ErrProxyCycle)
+	}
+}
